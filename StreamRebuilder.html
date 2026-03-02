@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Chat + Video Sync Player</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #111;
+  color: #fff;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+h2 {
+  margin: 0 0 15px 0;
+}
+
+.main-content {
+  display: flex;
+  gap: 15px;
+  flex: 1;
+  min-height: 0;
+}
+
+.video-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#videoContainer {
+  position: relative;
+  background: #000;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.chat-section {
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#chat {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #333;
+  padding: 10px;
+  background: #181818;
+  line-height: 1.6;
+  border-radius: 4px;
+}
+
+.msg { 
+  margin: 6px 0;
+}
+
+.name { 
+  font-weight: bold; 
+  color: #3ea6ff;
+  margin-right: 4px;
+}
+
+.emoji-img {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  display: inline-block;
+  margin: 0 1px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #181818;
+  border-radius: 4px;
+}
+
+#seekBar {
+  flex: 1;
+}
+
+button {
+  background: #3ea6ff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #2d8ed4;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+/* Fullscreen styles */
+.container:fullscreen,
+.container:-webkit-full-screen,
+.container:-moz-full-screen,
+.container:-ms-fullscreen {
+  padding: 0;
+}
+
+.container:fullscreen .main-content,
+.container:-webkit-full-screen .main-content,
+.container:-moz-full-screen .main-content,
+.container:-ms-fullscreen .main-content {
+  gap: 0;
+}
+
+.container:fullscreen h2,
+.container:-webkit-full-screen h2,
+.container:-moz-full-screen h2,
+.container:-ms-fullscreen h2 {
+  display: none;
+}
+
+.container:fullscreen .button-group,
+.container:-webkit-full-screen .button-group,
+.container:-moz-full-screen .button-group,
+.container:-ms-fullscreen .button-group {
+  display: none;
+}
+
+.container:fullscreen .chat-section,
+.container:-webkit-full-screen .chat-section,
+.container:-moz-full-screen .chat-section,
+.container:-ms-fullscreen .chat-section {
+  width: 350px;
+  padding: 10px;
+  background: #000;
+}
+
+.container:fullscreen #chat,
+.container:-webkit-full-screen #chat,
+.container:-moz-full-screen #chat,
+.container:-ms-fullscreen #chat {
+  border: none;
+  border-left: 1px solid #333;
+  border-radius: 0;
+}
+
+/* Scrollbar styling */
+#chat::-webkit-scrollbar {
+  width: 8px;
+}
+
+#chat::-webkit-scrollbar-track {
+  background: #222;
+}
+
+#chat::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+#chat::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+</style>
+</head>
+<body>
+
+<div class="container" id="container">
+  <h2>Chat + Video Sync Player</h2>
+  
+  <div class="button-group">
+    <button onclick="uploadChat()">Load Chat JSON</button>
+    <button onclick="toggleFullscreen()">Enter Fullscreen</button>
+  </div>
+
+  <div class="main-content">
+    <div class="video-section">
+      <div id="videoContainer">
+        <video id="video" controls>
+          <source src="https://ia803107.us.archive.org/9/items/2026.02.16-3-d-karaoke-unarchived-still-singing-for-a-cause-and-leaving-no-recor/Mori%20Calliope%20Ch.%20hololive-EN/2026.02.16-nmvl0uZpR_4/2026.02.16-%E3%80%903D%20Karaoke%20UNARCHIVED%E3%80%91STILL%20Singing%20For%20a%20Cause%2C%20and%20LEAVING%20NO%20RECORD.%20%23calliolive%20%23GOLIVEforLOVE-video-1080p.mp4" type="video/mp4">
+        </video>
+      </div>
+      
+      <div class="controls">
+        <span id="currentTime">0:00</span>
+        <input type="range" id="seekBar" min="0" max="0" value="0" step="100">
+      </div>
+    </div>
+
+    <div class="chat-section">
+      <div id="chat"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+
+let chatData = [];
+let videoElem = document.getElementById("video");
+let chatDiv = document.getElementById("chat");
+let seekBar = document.getElementById("seekBar");
+let currentTimeLabel = document.getElementById("currentTime");
+let container = document.getElementById("container");
+
+function uploadChat() 
+{
+  const chatInput = document.createElement("input");
+  chatInput.type = "file";
+  chatInput.accept = ".txt,.json";
+
+  chatInput.onchange = async (e) => 
+  {
+    const file = e.target.files[0];
+    const text = await file.text();
+    parseChat(text);
+  };
+
+  chatInput.click();
+}
+
+function parseChat(text) 
+{
+
+  chatData = [];
+  const lines = text.split("\n").filter(Boolean);
+
+  for (const line of lines) 
+  {
+    try 
+	{
+      const data = JSON.parse(line);
+      const action = data.replayChatItemAction?.actions?.[0];
+      if (!action) continue;
+
+      const item = action.addChatItemAction?.item;
+      if (!item) continue;
+
+      if (!item.liveChatTextMessageRenderer) continue;
+
+      const renderer = item.liveChatTextMessageRenderer;
+
+      const timestampUsec = parseInt(renderer.timestampUsec || 0);
+      const ms = timestampUsec / 1000;
+
+      const content = extractContent(renderer);
+      if (!content.trim()) continue;
+
+      chatData.push({
+        time: ms,
+        name: renderer.authorName?.simpleText || "Unknown",
+        content: content
+      });
+
+    } catch (err) {}
+  }
+
+  if (chatData.length === 0) 
+  {
+    alert("No valid text messages found.");
+    return;
+  }
+
+  chatData.sort((a,b) => a.time - b.time);
+
+
+  const firstTime = chatData[0].time;
+  chatData.forEach(m => m.time -= firstTime);
+
+  alert("Loaded " + chatData.length + " clean chat messages.");
+}
+
+function extractContent(renderer) 
+{
+
+  if (!renderer.message) return "";
+
+  if (renderer.message.simpleText) 
+  {
+    return escapeHtml(renderer.message.simpleText);
+  }
+
+  if (renderer.message.runs) 
+  {
+    return renderer.message.runs.map(run => 
+	{
+      // Regular text
+      if (typeof run.text === "string") 
+	  {
+        return escapeHtml(run.text);
+      }
+      
+      // Emoji handling
+      if (run.emoji) {
+        const emoji = run.emoji;
+        
+        // Get image url from thumbnails
+        const imageUrl = emoji.image?.thumbnails?.[0]?.url;
+        
+        if (imageUrl) 
+		{
+          const altText = emoji.emojiId.match(/^[\u{1F000}-\u{1F9FF}]/u) 
+            ? emoji.emojiId  
+            : (emoji.shortcuts?.[0] || emoji.searchTerms?.[0] || "emoji");
+          
+          return `<img class="emoji-img" src="${imageUrl}" alt="${escapeHtml(altText)}" title="${escapeHtml(altText)}">`;
+        }
+        
+        if (emoji.emojiId && emoji.emojiId.length <= 4 && emoji.emojiId.match(/[\u{1F000}-\u{1F9FF}]/u)) 
+		{
+          return emoji.emojiId;
+        }
+        
+        return "";
+      }
+      
+      return "";
+    }).join("");
+  }
+
+  return "";
+}
+
+function escapeHtml(text) 
+{
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function toggleFullscreen() 
+{
+  if (!document.fullscreenElement && !document.webkitFullscreenElement && 
+      !document.mozFullScreenElement && !document.msFullscreenElement) {
+    // Enter fullscreen
+    if (container.requestFullscreen) 
+	{
+      container.requestFullscreen();
+    } else if (container.webkitRequestFullscreen) 
+	{
+      container.webkitRequestFullscreen();
+    } else if (container.mozRequestFullScreen) 
+	{
+      container.mozRequestFullScreen();
+    } else if (container.msRequestFullscreen) 
+	{
+      container.msRequestFullscreen();
+    }
+  } else {
+    // Exit fullscreen
+    if (document.exitFullscreen) 
+	{
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) 
+	{
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) 
+	{
+      document.mozCancelFullScreen();
+    } else if (document.msExitFullscreen) 
+	{
+      document.msExitFullscreen();
+    }
+  }
+}
+
+videoElem.addEventListener("loadedmetadata", () => 
+{
+  seekBar.max = videoElem.duration * 1000;
+});
+
+videoElem.addEventListener("timeupdate", () => 
+{
+  const ms = videoElem.currentTime * 1000;
+  seekBar.value = ms;
+  currentTimeLabel.textContent = formatTime(ms);
+  renderChatUpTo(ms);
+});
+
+seekBar.addEventListener("input", () => 
+{
+  const ms = parseInt(seekBar.value);
+  videoElem.currentTime = ms / 1000;
+  renderChatUpTo(ms);
+});
+
+function renderChatUpTo(ms) {
+
+  chatDiv.innerHTML = "";
+
+  let count = 0;
+  
+  // Incase you need to delay chat (had to for 1 Video)
+  const chatDelay = 0;
+  const adjustedTime = ms + chatDelay;
+
+  while (count < chatData.length && chatData[count].time <= adjustedTime) 
+  {
+    const m = chatData[count];
+    const div = document.createElement("div");
+    div.className = "msg";
+    div.innerHTML = `<span class="name">${escapeHtml(m.name)}:</span>${m.content}`;
+    chatDiv.appendChild(div);
+    count++;
+  }
+
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+}
+
+function formatTime(ms) 
+{
+  const totalSec = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${mins}:${secs.toString().padStart(2,'0')}`;
+}
+
+// Handle esc key to exit fullscreen
+document.addEventListener('keydown', (e) => 
+{
+  if (e.key === 'Escape' && (document.fullscreenElement || document.webkitFullscreenElement || 
+      document.mozFullScreenElement || document.msFullscreenElement)) 
+	  {
+        toggleFullscreen();
+	  }
+});
+
+
+</script>
+
+</body>
+</html>
